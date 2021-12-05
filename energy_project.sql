@@ -1,8 +1,3 @@
-select column_name from information_schema.columns
-	where table_name = 'energy'
-
-select * from energy where year = 2019
-
 --Set NULL values to zero in all columns
 
 update energy
