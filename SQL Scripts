@@ -1,3 +1,10 @@
+--Extract column information
+
+select column_name from information_schema.columns
+	where table_name = 'energy'
+
+select * from energy where year = 2019
+
 --Set NULL values to zero in all columns
 
 update energy
@@ -124,13 +131,16 @@ select country,round(sum(primary_energy_consumption),1) as Energy_Consumption_TW
 		group by country
 		order by Energy_Consumption_TWh desc
 
---2) List countries by energy consumption per capita in the year 2019 in descending order
+--2) List the top 20 countries by energy consumption per capita in the year 2019 in descending order
 
-select country,round(sum(primary_energy_consumption)*1000000.00,1)/sum(population) 
+select country,round(sum(primary_energy_consumption)*1000000.00,1)/NULLIF(sum(population),0) 
 	as Energy_Consumption_MWh from energy
-		where year = 2019 and primary_energy_consumption is not null and country <> 'World'
+		where year = 2019 and population <> 0
+		and country not in (select country from countries_exclude)
 			group by country
 				order by Energy_Consumption_MWh desc
+					limit 20
+				
 		
 --3) List the top 20 countries by energy consumption and the percentage of energy consumed by 
 	-- each energy type
@@ -146,7 +156,8 @@ select country,round(sum(primary_energy_consumption),1) as Energy_Consumption_TW
 	round(sum(nuclear_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as nuclear_consumption,
 	round(sum(other_renewable_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as oth_renew_consumption
 		from energy
-			where year = 2019 and primary_energy_consumption is not null and country <> 'World'
+			where year = 2019 and primary_energy_consumption is not null 
+			and country not in(select country from countries_exclude)
 		group by country
 			order by Energy_Consumption_TWh desc 
 				limit 20;
@@ -168,27 +179,66 @@ select country,
 	
 --5) List the top 30 countries and the top 3 energy types by consumption in the year 2019
 
-with etypes as (
-	select country,round(sum(primary_energy_consumption),1) as Energy_Consumption_TWh,
-	round(sum(oil_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as oil_consumption,
-	round(sum(biofuel_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as biofuel_perc,
-	round(sum(coal_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as coal_perc,
-	round(sum(gas_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as gas_consumption,
-	round(sum(solar_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as solar_consumption,
-	round(sum(wind_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as wind_perc,
-	round(sum(hydro_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as hydro_consumption,
-	round(sum(nuclear_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as nuclear_consumption,
-	round(sum(other_renewable_consumption)/NULLIF(sum(primary_energy_consumption),0),1) as oth_renew_consumption
-		from energy
-			where year = 2019 and primary_energy_consumption is not null and country <> 'World'
-		group by country
-			order by Energy_Consumption_TWh desc)
+with subq as (
+select country, 'Oil' as Energy_Type, oil_consumption as Energy_Consumption from energy where year = 2019
+union
+select country, 'biofuel' as Energy_Type, biofuel_consumption as Energy_Consumption from energy where year = 2019
+union
+select country, 'Coal' as Energy_Type, coal_consumption as Energy_Consumption from energy where year = 2019
+union
+select country, 'Gas' as Energy_Type, gas_consumption as Energy_Consumption from energy where year = 2019
+union
+select country,'Solar' as Energy_Type, solar_consumption as Energy_Consumption from energy where year = 2019
+union
+select country,'Wind' as Energy_Type, wind_consumption as Energy_Consumption from energy where year = 2019
+union
+select country,'Hydro' as Energy_Type, hydro_consumption as Energy_Consumption from energy where year = 2019
+union
+select country,'Nuclear' as Energy_Type, nuclear_consumption as Energy_Consumption from energy where year = 2019
+union
+select country, 'Other' as Energy_Type, other_renewable_consumption as Energy_Consumption from energy where year = 2019
+),
+
+topc as(
+select country,sum(energy_consumption) as Energy_Consumption
+		from subq
+			where country <> 'World'
+			group by country
+				order by Energy_Consumption desc
+					limit 30
+)
+
+select country,Energy_Type,Energy_Consumption,rank from(
+	select t.country, s.Energy_Type, sum(s.Energy_Consumption) as Energy_Consumption, 
+		sum(t.Energy_Consumption) as Energy_Cons_Country,
+			rank() over(partition by t.country order by sum(s.Energy_Consumption) desc) as rank
+				from topc t
+				left join subq s
+				on t.country = s.country
+				group by t.country,s.Energy_Type
+					order by Energy_Cons_Country desc, rank asc) as subq
+						where rank<=3;
 
 --6) List the overall fossil fuel energy uptake(% increase/decrease) vs the renewable energy uptake 
 	-- from the year 1970 
+	
 	select year, renewables_cons_change_pct as renewables_uptake,
-		fossil_cons_change_pct as fossil_fuel_uptakr from energy
+		fossil_cons_change_pct as fossil_fuel_uptake from energy
 			where year > 1970 and year < 2020 and country = 'World'
-				order by year asc; 
+				order by year asc
 			
---7) List the uptake(% increase/decrease) of each energy type
+--7) List the top 10 countries which consume nuclear energy by the percent of total energy consumption
+	-- in the year 2019
+
+	select country, sum(nuclear_consumption) as nuclear_cons, 
+		sum(primary_energy_consumption) as total_energy_cons,
+			round(sum(nuclear_consumption)/NULLIF(sum(primary_energy_consumption),0),2) as nuc_perc_cons
+				from energy
+					group by country
+						having sum(primary_energy_consumption) <> 0
+							order by nuc_perc_cons desc
+								limit 10
+					
+			 			
+				
+	
