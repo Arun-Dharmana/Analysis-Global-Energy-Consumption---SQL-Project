@@ -127,11 +127,21 @@ update energy
 --1) List countries by total energy consumption in the year 2019 in descending order
 
 select country,round(sum(primary_energy_consumption),1) as Energy_Consumption_TWh from energy
-	where year = 2019 and primary_energy_consumption is not null and country <> 'World'
-		group by country
-		order by Energy_Consumption_TWh desc
+	where year = 2019 and primary_energy_consumption is not null 
+		and country not in (select country from countries_exclude)
+			group by country
+				order by Energy_Consumption_TWh desc
 
---2) List the top 20 countries by energy consumption per capita in the year 2019 in descending order
+--2) List the overall fossil fuel energy uptake(% increase/decrease) vs the renewable energy uptake 
+	-- from the year 1970 
+	
+	select year, renewables_cons_change_pct as renewables_uptake,
+		fossil_cons_change_pct as fossil_fuel_uptake from energy
+			where year > 1970 and year < 2020 
+				and country not in (select country from countries_exclude)
+					order by year asc
+
+--3) List the top 20 countries by energy consumption per capita in the year 2019 in descending order
 
 select country,round(sum(primary_energy_consumption)*1000000.00,1)/NULLIF(sum(population),0) 
 	as Energy_Consumption_MWh from energy
@@ -141,8 +151,20 @@ select country,round(sum(primary_energy_consumption)*1000000.00,1)/NULLIF(sum(po
 				order by Energy_Consumption_MWh desc
 					limit 20
 				
-		
---3) List the top 20 countries by energy consumption and the percentage of energy consumed by 
+--4) List the top 10 countries which consume nuclear energy by the percent of total energy consumption
+	-- in the year 2019
+
+	select country, sum(nuclear_consumption) as nuclear_cons, 
+		sum(primary_energy_consumption) as total_energy_cons,
+			round(sum(nuclear_consumption)/NULLIF(sum(primary_energy_consumption),0),2) as nuc_perc_cons
+				from energy
+					where country not in (select country from countries_exclude)
+						group by country
+							having sum(primary_energy_consumption) <> 0
+								order by nuc_perc_cons desc
+									limit 10
+
+--5) List the top 20 countries by energy consumption and the percentage of energy consumed by 
 	-- each energy type
 
 select country,round(sum(primary_energy_consumption),1) as Energy_Consumption_TWh,
@@ -162,7 +184,7 @@ select country,round(sum(primary_energy_consumption),1) as Energy_Consumption_TW
 			order by Energy_Consumption_TWh desc 
 				limit 20;
 	
---4) List the top 20 countries by percantage of renewable energy consumption and the percentage of energy by
+--6) List the top 20 countries by percantage of renewable energy consumption and the percentage of energy by
 	-- consumption by each renewable energy type
 
 select country, 
@@ -173,11 +195,12 @@ select country,
 	round(sum(nuclear_consumption)/NULLIF(sum(renewables_consumption),0),1) as nuclear_consumption,
 	round(sum(other_renewable_consumption)/NULLIF(sum(renewables_consumption),0),1) as oth_renew_consumption
 		from energy
-			where year = 2019 and renewables_consumption is not null and country <> 'World'
+			where year = 2019 and renewables_consumption is not null 
+				and country not in (select country from countries_exclude)
 		group by country
 			order by Renewables_Consumption_Pct desc;
 	
---5) List the top 30 countries and the top 3 energy types by consumption in the year 2019
+--7) List the top 30 countries and the top 3 energy types by consumption in the year 2019
 
 with subq as (
 select country, 'Oil' as Energy_Type, oil_consumption as Energy_Consumption from energy where year = 2019
@@ -202,7 +225,7 @@ select country, 'Other' as Energy_Type, other_renewable_consumption as Energy_Co
 topc as(
 select country,sum(energy_consumption) as Energy_Consumption
 		from subq
-			where country <> 'World'
+			where country not in (select country from countries_exclude)
 			group by country
 				order by Energy_Consumption desc
 					limit 30
@@ -218,27 +241,5 @@ select country,Energy_Type,Energy_Consumption,rank from(
 				group by t.country,s.Energy_Type
 					order by Energy_Cons_Country desc, rank asc) as subq
 						where rank<=3;
-
---6) List the overall fossil fuel energy uptake(% increase/decrease) vs the renewable energy uptake 
-	-- from the year 1970 
-	
-	select year, renewables_cons_change_pct as renewables_uptake,
-		fossil_cons_change_pct as fossil_fuel_uptake from energy
-			where year > 1970 and year < 2020 and country = 'World'
-				order by year asc
 			
---7) List the top 10 countries which consume nuclear energy by the percent of total energy consumption
-	-- in the year 2019
-
-	select country, sum(nuclear_consumption) as nuclear_cons, 
-		sum(primary_energy_consumption) as total_energy_cons,
-			round(sum(nuclear_consumption)/NULLIF(sum(primary_energy_consumption),0),2) as nuc_perc_cons
-				from energy
-					group by country
-						having sum(primary_energy_consumption) <> 0
-							order by nuc_perc_cons desc
-								limit 10
-					
-			 			
-				
 	
